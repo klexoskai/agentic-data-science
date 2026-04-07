@@ -1,0 +1,96 @@
+# =============================================================================
+# Agentic Data Science Pipeline — Configuration
+# =============================================================================
+# Select a quality preset or override individual settings below.
+
+active_preset: balanced  # fast | balanced | maximum
+
+# ---------------------------------------------------------------------------
+# Quality Presets
+# ---------------------------------------------------------------------------
+quality_presets:
+  fast:
+    description: "Quick iteration — mini models, fewer loops, no reflection"
+    model_config:
+      data_scientist:
+        model: gpt-5.4-mini
+        temperature: 0.3
+        max_tokens: 4096
+      sales_director:
+        model: gpt-5.4-mini
+        temperature: 0.5
+        max_tokens: 2048
+      qa_engineer:
+        model: gpt-5.4-mini
+        temperature: 0.1
+        max_tokens: 4096
+    workflow:
+      max_review_loops: 2
+      require_unanimous: false
+      reflection_enabled: false
+      best_practice_check_frequency: never  # always | on_uncertainty | never
+
+  balanced:
+    description: "Default — strong models, moderate loops, reflection enabled"
+    model_config:
+      data_scientist:
+        model: claude-sonnet-4-6
+        temperature: 0.4
+        max_tokens: 8192
+      sales_director:
+        model: gpt-5.4
+        temperature: 0.6
+        max_tokens: 4096
+      qa_engineer:
+        model: claude-sonnet-4-6
+        temperature: 0.1
+        max_tokens: 8192
+    workflow:
+      max_review_loops: 5
+      require_unanimous: true
+      reflection_enabled: true
+      best_practice_check_frequency: on_uncertainty
+
+  maximum:
+    description: "Highest quality — strongest models, deep reflection, full checks"
+    model_config:
+      data_scientist:
+        model: claude-opus-4-6
+        temperature: 0.3
+        max_tokens: 16384
+      sales_director:
+        model: gpt-5.4
+        temperature: 0.5
+        max_tokens: 8192
+      qa_engineer:
+        model: claude-opus-4-6
+        temperature: 0.1
+        max_tokens: 16384
+    workflow:
+      max_review_loops: 10
+      require_unanimous: true
+      reflection_enabled: true
+      best_practice_check_frequency: always
+
+# ---------------------------------------------------------------------------
+# Output Settings
+# ---------------------------------------------------------------------------
+output:
+  outputs_dir: outputs
+  pipeline_dir: pipeline
+  decisions_dir: decisions
+  log_file: outputs/pipeline.log
+
+# ---------------------------------------------------------------------------
+# Persona Factory Settings
+# ---------------------------------------------------------------------------
+persona_factory:
+  # Model used by the factory to analyse context and decide personas
+  model: gpt-5.4-mini
+  temperature: 0.2
+  max_tokens: 2048
+  # Default persona roster (always included)
+  default_personas:
+    - data_scientist
+    - sales_director
+    - qa_engineer

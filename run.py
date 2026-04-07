@@ -1,0 +1,368 @@
+#!/usr/bin/env python3
+"""Agentic Data Science Pipeline — Main Entry Point.
+
+Orchestrates a multi-agent collaboration pipeline that reads business context
+and data source documentation, then designs, builds, tests, and ships a
+data science solution.
+
+Usage::
+
+    python run.py \\
+        --context inputs/sample/context.md \\
+        --data-sources inputs/sample/data_sources.md \\
+        --quality balanced \\
+        --samples-dir inputs/sample/
+
+Run ``python run.py --help`` for full options.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import yaml
+from dotenv import load_dotenv
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.table import Table
+
+# Ensure the project root is on sys.path
+_PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(_PROJECT_ROOT))
+
+from agents.persona_factory import PersonaFactory
+from agents.swarm import Phase, SwarmState, build_graph
+
+console = Console()
+
+# ======================================================================
+# Configuration
+# ======================================================================
+
+
+def load_config(config_path: Path, quality_override: str | None = None) -> dict[str, Any]:
+    """Load config.yaml and apply the selected quality preset.
+
+    Parameters
+    ----------
+    config_path : Path
+        Path to the YAML configuration file.
+    quality_override : str | None
+        If given, overrides the ``active_preset`` key in the file.
+
+    Returns
+    -------
+    dict[str, Any]
+        Merged configuration dictionary with the active preset's settings
+        promoted to top-level ``model_config`` and ``workflow`` keys.
+    """
+    with open(config_path, "r", encoding="utf-8") as fh:
+        config = yaml.safe_load(fh)
+
+    preset_name = quality_override or config.get("active_preset", "balanced")
+    presets = config.get("quality_presets", {})
+
+    if preset_name not in presets:
+        console.print(f"[red]Unknown quality preset '{preset_name}'. Using 'balanced'.[/]")
+        preset_name = "balanced"
+
+    preset = presets[preset_name]
+    config["active_preset"] = preset_name
+    config["model_config"] = preset["model_config"]
+    config["workflow"] = preset["workflow"]
+
+    return config
+
+
+def read_file(path: str | Path) -> str:
+    """Read a text file and return its contents."""
+    p = Path(path)
+    if not p.exists():
+        console.print(f"[red]File not found: {p}[/]")
+        sys.exit(1)
+    return p.read_text(encoding="utf-8")
+
+
+# ======================================================================
+# Display helpers
+# ======================================================================
+
+
+def display_banner(config: dict[str, Any]) -> None:
+    """Show a startup banner with configuration summary."""
+    preset = config["active_preset"]
+    workflow = config["workflow"]
+
+    table = Table(title="Pipeline Configuration", border_style="blue")
+    table.add_column("Setting", style="bold")
+    table.add_column("Value")
+    table.add_row("Quality Preset", preset)
+    table.add_row("Max Review Loops", str(workflow["max_review_loops"]))
+    table.add_row("Require Unanimous", str(workflow["require_unanimous"]))
+    table.add_row("Reflection Enabled", str(workflow["reflection_enabled"]))
+    table.add_row("Best Practice Checks", workflow["best_practice_check_frequency"])
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold blue]Agentic Data Science Pipeline[/]\n"
+            "Multi-agent collaboration for data science solutions",
+            border_style="blue",
+        )
+    )
+    console.print(table)
+    console.print()
+
+
+def display_personas(personas: list[Any]) -> None:
+    """Show the selected agent roster."""
+    table = Table(title="Agent Roster", border_style="green")
+    table.add_column("Agent", style="bold")
+    table.add_column("Type")
+    table.add_column("Model")
+    table.add_column("Domain Focus")
+
+    for p in personas:
+        table.add_row(
+            p.name,
+            p.config.persona_type,
+            p.config.model,
+            p.config.domain_focus or "—",
+        )
+
+    console.print(table)
+    console.print()
+
+
+# ======================================================================
+# Git helpers
+# ======================================================================
+
+
+def git_init_and_commit(message: str) -> None:
+    """Initialise a git repo (if needed) and commit all files.
+
+    Parameters
+    ----------
+    message : str
+        The commit message.
+    """
+    try:
+        if not (_PROJECT_ROOT / ".git").exists():
+            subprocess.run(["git", "init"], cwd=_PROJECT_ROOT, check=True, capture_output=True)
+            logger.info("Initialised git repository.")
+
+        subprocess.run(["git", "add", "-A"], cwd=_PROJECT_ROOT, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=_PROJECT_ROOT,
+            check=True,
+            capture_output=True,
+        )
+        logger.info("Committed: %s", message)
+        console.print(f"[green]Git commit:[/] {message}")
+    except FileNotFoundError:
+        logger.warning("git not found — skipping commit.")
+    except subprocess.CalledProcessError as exc:
+        logger.warning("git command failed: %s", exc)
+
+
+# ======================================================================
+# Main pipeline
+# ======================================================================
+
+
+def run_pipeline(
+    context_path: str,
+    data_sources_path: str,
+    quality: str | None,
+    samples_dir: str | None,
+    config_path: str = "config.yaml",
+) -> None:
+    """Execute the full agentic pipeline.
+
+    Parameters
+    ----------
+    context_path : str
+        Path to the business context markdown file.
+    data_sources_path : str
+        Path to the data sources documentation file.
+    quality : str | None
+        Quality preset override (``fast``, ``balanced``, ``maximum``).
+    samples_dir : str | None
+        Optional directory containing sample data files for profiling.
+    config_path : str
+        Path to the YAML configuration file.
+    """
+    # Load environment and config
+    load_dotenv()
+    config = load_config(Path(config_path), quality_override=quality)
+    display_banner(config)
+
+    # Read input files
+    context_text = read_file(context_path)
+    data_sources_text = read_file(data_sources_path)
+
+    console.print(f"[dim]Context loaded: {len(context_text):,} chars[/]")
+    console.print(f"[dim]Data sources loaded: {len(data_sources_text):,} chars[/]")
+    console.print()
+
+    # ------------------------------------------------------------------
+    # Persona Factory — decide which agents to spin up
+    # ------------------------------------------------------------------
+    console.rule("[bold]Phase 0 — Agent Selection")
+    factory = PersonaFactory(
+        factory_config=config.get("persona_factory", {}),
+        model_config=config["model_config"],
+    )
+    personas = factory.decide_personas(context_text, data_sources_text)
+    display_personas(personas)
+
+    # ------------------------------------------------------------------
+    # Build the LangGraph state machine
+    # ------------------------------------------------------------------
+    workflow_cfg = config["workflow"]
+    graph = build_graph(personas, workflow_cfg)
+
+    # Prepare initial state
+    initial_state = SwarmState(
+        context_text=context_text,
+        data_sources_text=data_sources_text,
+        samples_dir=samples_dir or "",
+        max_review_loops=workflow_cfg["max_review_loops"],
+        require_unanimous=workflow_cfg["require_unanimous"],
+        reflection_enabled=workflow_cfg["reflection_enabled"],
+        best_practice_check_frequency=workflow_cfg["best_practice_check_frequency"],
+    )
+
+    # ------------------------------------------------------------------
+    # Execute the graph
+    # ------------------------------------------------------------------
+    console.rule("[bold]Executing Pipeline")
+    console.print()
+
+    try:
+        final_state = graph.invoke(initial_state.model_dump())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Pipeline interrupted by user.[/]")
+        return
+
+    # ------------------------------------------------------------------
+    # Phase D — Ship
+    # ------------------------------------------------------------------
+    final_phase = final_state.get("current_phase", Phase.DONE)
+    if final_phase == Phase.ABORTED or final_phase == Phase.ABORTED.value:
+        console.print(Panel("[bold red]Pipeline aborted by reviewer.[/]", border_style="red"))
+        return
+
+    console.rule("[bold green]Phase D — Ship")
+
+    # Commit everything to git
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    git_init_and_commit(f"Pipeline run completed at {timestamp}")
+
+    # Summary
+    artifacts = final_state.get("artifacts", [])
+    console.print(
+        Panel(
+            f"[bold green]Pipeline completed successfully![/]\n\n"
+            f"Artefacts produced: {len(artifacts)}\n"
+            f"Review loops: {final_state.get('review_count', 0)}\n"
+            f"Quality preset: {config['active_preset']}\n\n"
+            "Check the [bold]outputs/[/] and [bold]pipeline/[/] directories.",
+            title="Summary",
+            border_style="green",
+        )
+    )
+
+
+# ======================================================================
+# CLI
+# ======================================================================
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Agentic Data Science Pipeline — Multi-agent collaboration system",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python run.py --context inputs/sample/context.md "
+            "--data-sources inputs/sample/data_sources.md\n"
+            "  python run.py --context my_project/context.md "
+            "--data-sources my_project/data.md --quality maximum\n"
+        ),
+    )
+    parser.add_argument(
+        "--context",
+        required=True,
+        help="Path to the business context markdown file.",
+    )
+    parser.add_argument(
+        "--data-sources",
+        required=True,
+        help="Path to the data sources documentation markdown file.",
+    )
+    parser.add_argument(
+        "--quality",
+        choices=["fast", "balanced", "maximum"],
+        default=None,
+        help="Quality preset (overrides config.yaml). Default: balanced.",
+    )
+    parser.add_argument(
+        "--samples-dir",
+        default=None,
+        help="Optional directory containing sample data files for profiling.",
+    )
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to the configuration YAML file. Default: config.yaml.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose (DEBUG) logging.",
+    )
+    return parser.parse_args()
+
+
+# ======================================================================
+# Entry point
+# ======================================================================
+
+# Module-level logger — configured in __main__ block
+logger = logging.getLogger("agentic_ds")
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    # Configure logging with Rich
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(console=console, rich_tracebacks=True)],
+    )
+    logger = logging.getLogger("agentic_ds")
+
+    # Change to project root so relative paths work
+    os.chdir(_PROJECT_ROOT)
+
+    run_pipeline(
+        context_path=args.context,
+        data_sources_path=args.data_sources,
+        quality=args.quality,
+        samples_dir=args.samples_dir,
+        config_path=args.config,
+    )
