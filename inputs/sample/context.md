@@ -21,11 +21,22 @@ Also produce a short paragraph explaining the projection logic and evidence used
 - Criterion 1: Pipeline runs end-to-end without manual intervention.
 - Criterion 2: Returns similar-SKU set (max 3) and a 12-month projection output.
 - Criterion 3: Includes a concise evidence-based narrative.
+- Criterion 4: Produces concrete files in `outputs/` and runnable app code in `pipeline/`.
 
 ## Constraints
 - **Timeline**: MVP now; iterate after first successful run.
 - **Budget**: Reuse existing project stack and local data files.
 - **Technical**: Prefer simple, robust transforms and clear assumptions over complex modeling in v1.
+
+## Input Contract (Strict)
+- Future runs must treat this file (`inputs/sample/context.md`) and `inputs/sample/data_sources.md` as the only business requirements source of truth.
+- If requirements are missing from these two files, the pipeline should use conservative defaults instead of inventing scope.
+- Any scope expansion (for example external data enrichment) must be added explicitly to these two files first.
+
+## Tech Stack and Fallback
+- Preferred stack: Python, pandas, Plotly, Dash.
+- Preferred outputs: interactive Dash frontend + chart artifact + markdown summary.
+- Fallback behavior if Dash/frontend generation fails: still generate CSV projections and markdown report in `outputs/`.
 
 ## Stakeholders
 | Role | Name | Interest | Decision Authority |

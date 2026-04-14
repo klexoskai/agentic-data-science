@@ -40,6 +40,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from agents.persona_factory import PersonaFactory
 from agents.swarm import Phase, SwarmState, build_graph
+from mvp_bundle import generate_projection_bundle
 
 console = Console()
 
@@ -264,6 +265,20 @@ def run_pipeline(
         return
 
     console.rule("[bold green]Phase D — Ship")
+
+    # Deterministic MVP artefacts (chart + csv + report) so each run
+    # produces tangible deliverables even if agent tool-calling is limited.
+    try:
+        artefact_paths = generate_projection_bundle(
+            data_dir=samples_dir or (_PROJECT_ROOT / "data"),
+            output_dir=_PROJECT_ROOT / "outputs",
+        )
+        console.print("[green]Generated MVP artefacts:[/]")
+        for name, path in artefact_paths.items():
+            console.print(f"  - {name}: {path.relative_to(_PROJECT_ROOT)}")
+    except Exception as exc:
+        logger.warning("MVP artefact generation skipped: %s", exc)
+        console.print(f"[yellow]MVP artefact generation skipped:[/] {exc}")
 
     # Commit everything to git
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

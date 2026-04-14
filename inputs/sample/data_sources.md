@@ -99,3 +99,8 @@ Launch Tracker (SKU Code, SKU Launch Month, Category, Market Specific, Brand)
 - Core internal joins require a canonical SKU mapping layer across `SKU Code`, `PRODUCT_ID`, `sku_id`, and `matched_SKU_ID`.
 - Month-level projection requires strict period normalization (`YYYY-MM` and date alignment across files).
 - For first run, defer IQVIA/Euromonitor/WHO/ANP/SLOB integration to keep pipeline lightweight and stable.
+
+## Source-of-Truth Guardrail
+- For future runs, this document and `inputs/sample/context.md` are the only approved requirements inputs.
+- Do not infer additional datasets or business objectives unless they are written into these two markdown files.
+- If a required field or source detail is missing, pipeline should log an explicit assumption in output artifacts.
