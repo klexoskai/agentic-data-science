@@ -107,7 +107,7 @@ python run.py \
 | `--samples-dir` | No | Directory with sample data files for profiling |
 | `--config` | No | Path to config YAML (default: `config.yaml`) |
 | `--verbose` | No | Enable DEBUG-level logging |
-| `--launch-frontend` | No | Start Dash app at `http://127.0.0.1:8050` after successful run |
+| `--launch-frontend` | No | Start Dash app on localhost after successful run (uses `8050` if free, otherwise next available port) |
 
 ## Configuration
 

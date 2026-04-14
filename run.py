@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import socket
 import subprocess
 import sys
 from datetime import datetime
@@ -176,6 +177,18 @@ def git_init_and_commit(message: str) -> None:
         logger.warning("git command failed: %s", exc)
 
 
+def _find_available_port(preferred_port: int, max_tries: int = 50) -> int:
+    """Return the first available localhost port from preferred_port upward."""
+    for port in range(preferred_port, preferred_port + max_tries):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if sock.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    raise RuntimeError(
+        f"No available port found from {preferred_port} to {preferred_port + max_tries - 1}"
+    )
+
+
 # ======================================================================
 # Main pipeline
 # ======================================================================
@@ -304,10 +317,14 @@ def run_pipeline(
     if launch_frontend:
         app_path = _PROJECT_ROOT / "pipeline" / "launch_projection_dash_app.py"
         if app_path.exists():
-            console.print("[cyan]Launching Dash frontend on localhost:8050...[/]")
+            preferred_port = 8050
             try:
-                subprocess.Popen([sys.executable, str(app_path)], cwd=_PROJECT_ROOT)
-                console.print("[green]Frontend started:[/] http://127.0.0.1:8050")
+                port = _find_available_port(preferred_port)
+                env = os.environ.copy()
+                env["DASH_PORT"] = str(port)
+                console.print(f"[cyan]Launching Dash frontend on localhost:{port}...[/]")
+                subprocess.Popen([sys.executable, str(app_path)], cwd=_PROJECT_ROOT, env=env)
+                console.print(f"[green]Frontend started:[/] http://127.0.0.1:{port}")
             except Exception as exc:
                 logger.warning("Failed to launch frontend: %s", exc)
                 console.print(f"[yellow]Failed to launch frontend:[/] {exc}")

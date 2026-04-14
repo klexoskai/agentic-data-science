@@ -39,7 +39,7 @@ Also produce a short paragraph explaining the projection logic and evidence used
 - Preferred outputs: interactive Dash frontend + chart artifact + markdown summary.
 - Fallback behavior if Dash/frontend generation fails: still generate CSV projections and markdown report in `outputs/`.
 - Frontend interaction contract: clicking submit with new launch inputs must re-run projection logic and overwrite output artifacts with the new scenario.
-- Runtime option: use `--launch-frontend` to auto-start localhost frontend after successful pipeline completion.
+- Runtime option: use `--launch-frontend` to auto-start localhost frontend after successful pipeline completion (`8050` preferred, auto-fallback to next available port if occupied).
 
 ## Stakeholders
 | Role | Name | Interest | Decision Authority |
