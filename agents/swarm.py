@@ -97,11 +97,11 @@ class SwarmState(BaseModel):
 # Node functions
 # ======================================================================
 
-def _make_understand_node(persona: BasePersona):
+def _make_understand_node(persona: BasePersona, persona_key: str):
     """Create a Phase A node: persona analyses context and produces insights."""
 
     def node(state: SwarmState) -> dict[str, Any]:
-        logger.info("[Phase A] %s is analysing business context…", persona.name)
+        logger.info("[Phase A] %s (%s) is analysing business context…", persona.name, persona_key)
 
         prompt = (
             "## Task: Understand the Business Context\n\n"
@@ -123,6 +123,12 @@ def _make_understand_node(persona: BasePersona):
                 "\n\n## Previous Feedback (incorporate this):\n"
                 + "\n".join(f"- {fb}" for fb in state.feedback_log)
             )
+            previous_output = state.agent_outputs.get(persona_key)
+            if previous_output:
+                prompt += (
+                    "\n\n## Your Previous Output (revise this, do not restart from scratch):\n"
+                    f"{previous_output}"
+                )
 
         output = persona.invoke(prompt)
 
@@ -139,52 +145,56 @@ def _make_understand_node(persona: BasePersona):
                 output = persona.invoke(revision_prompt)
 
         return {
-            "agent_outputs": {persona.name: output},
-            "is_satisfied": {persona.name: True},
+            "agent_outputs": {persona_key: output},
+            "is_satisfied": {persona_key: True},
         }
 
     return node
 
 
-def _make_review_node(reviewer: BasePersona, reviewed_personas: list[BasePersona]):
+def _make_review_node(
+    reviewer: BasePersona,
+    reviewer_key: str,
+    reviewed_personas: list[tuple[str, BasePersona]],
+):
     """Create a peer-review node where one persona reviews others' outputs."""
 
     def node(state: SwarmState) -> dict[str, Any]:
         all_satisfied = True
         reviews: list[str] = []
 
-        for other in reviewed_personas:
-            if other.name == reviewer.name:
+        for other_key, other in reviewed_personas:
+            if other_key == reviewer_key:
                 continue
-            other_output = state.agent_outputs.get(other.name, "")
+            other_output = state.agent_outputs.get(other_key, "")
             if not other_output:
                 continue
 
-            logger.info("[Review] %s is reviewing %s's output", reviewer.name, other.name)
+            logger.info("[Review] %s (%s) is reviewing %s", reviewer.name, reviewer_key, other_key)
             review = reviewer.review(
                 other_output=other_output,
-                other_name=other.name,
+                other_name=other_key,
                 task_context=state.context_text,
             )
-            reviews.append(f"**{reviewer.name} → {other.name}:** {review}")
+            reviews.append(f"**{reviewer_key} -> {other_key}:** {review}")
 
             if not reviewer.is_satisfied(review):
                 all_satisfied = False
 
         review_text = "\n\n".join(reviews)
         return {
-            "agent_outputs": {f"{reviewer.name}_review": review_text},
-            "is_satisfied": {reviewer.name: all_satisfied},
+            "agent_outputs": {f"{reviewer_key}_review": review_text},
+            "is_satisfied": {reviewer_key: all_satisfied},
         }
 
     return node
 
 
-def _make_build_node(persona: BasePersona):
+def _make_build_node(persona: BasePersona, persona_key: str):
     """Create a Phase B node: persona generates pipeline code / artefacts."""
 
     def node(state: SwarmState) -> dict[str, Any]:
-        logger.info("[Phase B] %s is building pipeline components…", persona.name)
+        logger.info("[Phase B] %s (%s) is building pipeline components…", persona.name, persona_key)
 
         # Collect all Phase A outputs for context
         phase_a_context = "\n\n---\n\n".join(
@@ -210,22 +220,28 @@ def _make_build_node(persona: BasePersona):
                 "\n\n## Feedback to incorporate:\n"
                 + "\n".join(f"- {fb}" for fb in state.feedback_log)
             )
+            previous_output = state.agent_outputs.get(f"{persona_key}_build")
+            if previous_output:
+                prompt += (
+                    "\n\n## Your Previous Build Output (revise this):\n"
+                    f"{previous_output}"
+                )
 
         output = persona.invoke(prompt)
 
         return {
-            "agent_outputs": {f"{persona.name}_build": output},
-            "artifacts": [f"{persona.name}_build_output"],
+            "agent_outputs": {f"{persona_key}_build": output},
+            "artifacts": [f"{persona_key}_build_output"],
         }
 
     return node
 
 
-def _make_test_node(persona: BasePersona):
+def _make_test_node(persona: BasePersona, persona_key: str):
     """Create a Phase C node: persona tests and validates pipeline outputs."""
 
     def node(state: SwarmState) -> dict[str, Any]:
-        logger.info("[Phase C] %s is testing pipeline outputs…", persona.name)
+        logger.info("[Phase C] %s (%s) is testing pipeline outputs…", persona.name, persona_key)
 
         build_context = "\n\n---\n\n".join(
             f"### {name}\n{output}"
@@ -250,8 +266,8 @@ def _make_test_node(persona: BasePersona):
         satisfied = "PASS" in output.upper()
 
         return {
-            "agent_outputs": {f"{persona.name}_test": output},
-            "is_satisfied": {persona.name: satisfied},
+            "agent_outputs": {f"{persona_key}_test": output},
+            "is_satisfied": {persona_key: satisfied},
         }
 
     return node
@@ -411,11 +427,16 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
     # ------------------------------------------------------------------
     # Phase A — Understand (one node per persona)
     # ------------------------------------------------------------------
+    persona_slots: list[tuple[str, BasePersona]] = [
+        (f"{persona.config.persona_type}_{idx}", persona)
+        for idx, persona in enumerate(personas)
+    ]
+
     understand_nodes: list[str] = []
-    for idx, persona in enumerate(personas):
+    for persona_key, persona in persona_slots:
         # Include the persona index so duplicate persona_type values do not collide.
-        node_name = f"understand_{persona.config.persona_type}_{idx}"
-        graph.add_node(node_name, _make_understand_node(persona))
+        node_name = f"understand_{persona_key}"
+        graph.add_node(node_name, _make_understand_node(persona, persona_key))
         understand_nodes.append(node_name)
 
     # Fan-out: START → all understand nodes
@@ -428,9 +449,9 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
     # Review loop (each persona reviews others)
     # ------------------------------------------------------------------
     review_nodes: list[str] = []
-    for idx, persona in enumerate(personas):
-        node_name = f"review_{persona.config.persona_type}_{idx}"
-        graph.add_node(node_name, _make_review_node(persona, personas))
+    for persona_key, persona in persona_slots:
+        node_name = f"review_{persona_key}"
+        graph.add_node(node_name, _make_review_node(persona, persona_key, persona_slots))
         review_nodes.append(node_name)
 
     # Last understand → first review
@@ -482,9 +503,9 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
 
     graph.add_node("build_start", build_start_fn)
 
-    for idx, persona in enumerate(personas):
-        node_name = f"build_{persona.config.persona_type}_{idx}"
-        graph.add_node(node_name, _make_build_node(persona))
+    for persona_key, persona in persona_slots:
+        node_name = f"build_{persona_key}"
+        graph.add_node(node_name, _make_build_node(persona, persona_key))
         build_nodes.append(node_name)
 
     graph.add_edge("build_start", build_nodes[0])
@@ -503,9 +524,9 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
     graph.add_node("test_start", test_start_fn)
     graph.add_edge(build_nodes[-1], "test_start")
 
-    for idx, persona in enumerate(personas):
-        node_name = f"test_{persona.config.persona_type}_{idx}"
-        graph.add_node(node_name, _make_test_node(persona))
+    for persona_key, persona in persona_slots:
+        node_name = f"test_{persona_key}"
+        graph.add_node(node_name, _make_test_node(persona, persona_key))
         test_nodes.append(node_name)
 
     graph.add_edge("test_start", test_nodes[0])
