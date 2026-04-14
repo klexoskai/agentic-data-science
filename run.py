@@ -187,6 +187,7 @@ def run_pipeline(
     quality: str | None,
     samples_dir: str | None,
     config_path: str = "config.yaml",
+    launch_frontend: bool = False,
 ) -> None:
     """Execute the full agentic pipeline.
 
@@ -202,6 +203,8 @@ def run_pipeline(
         Optional directory containing sample data files for profiling.
     config_path : str
         Path to the YAML configuration file.
+    launch_frontend : bool
+        If True, start the Dash frontend after a successful pipeline run.
     """
     # Load environment and config
     load_dotenv()
@@ -298,6 +301,19 @@ def run_pipeline(
         )
     )
 
+    if launch_frontend:
+        app_path = _PROJECT_ROOT / "pipeline" / "launch_projection_dash_app.py"
+        if app_path.exists():
+            console.print("[cyan]Launching Dash frontend on localhost:8050...[/]")
+            try:
+                subprocess.Popen([sys.executable, str(app_path)], cwd=_PROJECT_ROOT)
+                console.print("[green]Frontend started:[/] http://127.0.0.1:8050")
+            except Exception as exc:
+                logger.warning("Failed to launch frontend: %s", exc)
+                console.print(f"[yellow]Failed to launch frontend:[/] {exc}")
+        else:
+            console.print("[yellow]Frontend script not found; skipping launch.[/]")
+
 
 # ======================================================================
 # CLI
@@ -348,6 +364,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable verbose (DEBUG) logging.",
     )
+    parser.add_argument(
+        "--launch-frontend",
+        action="store_true",
+        help="Launch Dash frontend on localhost after successful completion.",
+    )
     return parser.parse_args()
 
 
@@ -380,4 +401,5 @@ if __name__ == "__main__":
         quality=args.quality,
         samples_dir=args.samples_dir,
         config_path=args.config,
+        launch_frontend=args.launch_frontend,
     )

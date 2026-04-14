@@ -22,6 +22,7 @@ Also produce a short paragraph explaining the projection logic and evidence used
 - Criterion 2: Returns similar-SKU set (max 3) and a 12-month projection output.
 - Criterion 3: Includes a concise evidence-based narrative.
 - Criterion 4: Produces concrete files in `outputs/` and runnable app code in `pipeline/`.
+- Criterion 5: Frontend submit action regenerates persisted outputs (`.csv`, `.md`, `.html`) and refreshes chart for changed input scenario.
 
 ## Constraints
 - **Timeline**: MVP now; iterate after first successful run.
@@ -37,6 +38,8 @@ Also produce a short paragraph explaining the projection logic and evidence used
 - Preferred stack: Python, pandas, Plotly, Dash.
 - Preferred outputs: interactive Dash frontend + chart artifact + markdown summary.
 - Fallback behavior if Dash/frontend generation fails: still generate CSV projections and markdown report in `outputs/`.
+- Frontend interaction contract: clicking submit with new launch inputs must re-run projection logic and overwrite output artifacts with the new scenario.
+- Runtime option: use `--launch-frontend` to auto-start localhost frontend after successful pipeline completion.
 
 ## Stakeholders
 | Role | Name | Interest | Decision Authority |

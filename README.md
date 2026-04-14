@@ -76,7 +76,8 @@ cp .env.example .env
 python run.py \
     --context inputs/sample/context.md \
     --data-sources inputs/sample/data_sources.md \
-    --quality fast
+    --quality fast \
+    --launch-frontend
     # change --quality to balanced if needed
 ```
 
@@ -106,6 +107,7 @@ python run.py \
 | `--samples-dir` | No | Directory with sample data files for profiling |
 | `--config` | No | Path to config YAML (default: `config.yaml`) |
 | `--verbose` | No | Enable DEBUG-level logging |
+| `--launch-frontend` | No | Start Dash app at `http://127.0.0.1:8050` after successful run |
 
 ## Configuration
 

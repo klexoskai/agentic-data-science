@@ -104,3 +104,4 @@ Launch Tracker (SKU Code, SKU Launch Month, Category, Market Specific, Brand)
 - For future runs, this document and `inputs/sample/context.md` are the only approved requirements inputs.
 - Do not infer additional datasets or business objectives unless they are written into these two markdown files.
 - If a required field or source detail is missing, pipeline should log an explicit assumption in output artifacts.
+- Frontend submit behavior must regenerate outputs from these same source definitions, not alternate hidden inputs.
