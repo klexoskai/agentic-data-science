@@ -101,6 +101,36 @@ class BasePersona(ABC):
     # ------------------------------------------------------------------
     # Core methods
     # ------------------------------------------------------------------
+    @staticmethod
+    def _content_to_text(content: Any) -> str:
+        """Normalize model response/review content into plain text.
+
+        Some chat models can return structured content blocks (list/dict) rather than
+        a plain string. This helper ensures downstream logic always gets text.
+        """
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text = item.get("text")
+                    if text is not None:
+                        parts.append(str(text))
+                    else:
+                        parts.append(str(item))
+                else:
+                    parts.append(str(item))
+            return "\n".join(p for p in parts if p).strip()
+        if isinstance(content, dict):
+            text = content.get("text")
+            return str(text) if text is not None else str(content)
+        return str(content)
+
     def invoke(self, user_message: str) -> str:
         """Send a message to the LLM and return its text response.
 
@@ -121,7 +151,7 @@ class BasePersona(ABC):
         ]
         logger.info("[%s] Invoking LLM with %d-char message", self.name, len(user_message))
         response = llm.invoke(messages)
-        return response.content  # type: ignore[union-attr]
+        return self._content_to_text(response.content)  # type: ignore[union-attr]
 
     def reflect(self, own_output: str, task_context: str) -> str:
         """Self-critique: the persona reviews its own output and suggests improvements.
@@ -184,7 +214,7 @@ class BasePersona(ABC):
         logger.info("[%s] Reviewing output from %s", self.name, other_name)
         return self.invoke(review_prompt)
 
-    def is_satisfied(self, review_text: str) -> bool:
+    def is_satisfied(self, review_text: str | list[Any] | dict[str, Any] | None) -> bool:
         """Parse a review response to determine if the agent approved.
 
         Parameters
@@ -197,5 +227,5 @@ class BasePersona(ABC):
         bool
             ``True`` if the review contains an approval signal.
         """
-        upper = review_text.upper()
+        upper = self._content_to_text(review_text).upper()
         return "APPROVE" in upper or "LGTM" in upper

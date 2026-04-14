@@ -3,7 +3,7 @@
 # =============================================================================
 # Select a quality preset or override individual settings below.
 
-active_preset: balanced  # fast | balanced | maximum
+active_preset: fast  # fast | balanced | maximum
 
 # ---------------------------------------------------------------------------
 # Quality Presets

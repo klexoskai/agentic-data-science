@@ -1,34 +1,36 @@
-# Business Context — FMCG SKU Performance Analysis
+# Business Context — MVP First Run
 
 ## Business Overview
-- **Company**: NusaGoods Pte Ltd
-- **Industry**: Fast-Moving Consumer Goods (FMCG) — personal care & household cleaning
-- **Scale**: ~USD 120M annual revenue, 350+ active SKUs, distribution across Singapore, Malaysia, Indonesia, Thailand, and the Philippines. 8,000 retail touchpoints plus growing e-commerce (Shopee, Lazada, TikTok Shop).
+- **Company**: iNova Pharma Pte Ltd
+- **Industry**: FMCG / OTC healthcare
+- **Scale**: Multi-market portfolio; pilot will focus on available internal CSV data only.
 
 ## Problem Statement
-The commercial team needs to identify **top- and bottom-performing SKUs** across markets and channels, and build a **predictive framework** that estimates the likelihood of success for new product launches before committing to production runs. Today, launch decisions rely on gut feel and anecdotal comparisons to past products; roughly 40 % of new SKUs are delisted within 18 months.
+Build a lightweight end-to-end pipeline that, for a hypothetical launch input (`launch month`, `category`, `market`, `brand`):
+1) retrieves up to 3 similar historical SKU launches, and
+2) produces a simple 12-month projected sales trend.
+
+Also produce a short paragraph explaining the projection logic and evidence used.
 
 ## Current Limitations
-- Performance tracking is done in Excel pivot tables refreshed manually once a month.
-- No statistical rigour — "top performer" is simply sorted by revenue, ignoring margin, velocity, or trend.
-- New-launch success factors have never been formally modelled; the team debates endlessly whether packaging, price point, or marketing spend matters most.
-- Data lives in three separate systems with no automated joins.
+- Data is split across multiple internal extracts with different SKU key names.
+- No single reusable workflow currently exists for launch similarity + projection.
+- External market/seasonality sources are not yet integrated in a stable way.
 
 ## Success Criteria
-- **SC-1**: A repeatable, automated SKU scorecard that ranks SKUs on a composite metric (revenue × margin × velocity trend) refreshable weekly.
-- **SC-2**: A classification model predicting new-launch survival (still active after 12 months) with ≥ 75 % AUC on held-out data.
-- **SC-3**: Clear, interpretable feature-importance output so the commercial team can act on the top 5 launch-success drivers.
-- **SC-4**: Dashboard or report consumable by non-technical stakeholders (Sales Directors, Country Managers).
+- Criterion 1: Pipeline runs end-to-end without manual intervention.
+- Criterion 2: Returns similar-SKU set (max 3) and a 12-month projection output.
+- Criterion 3: Includes a concise evidence-based narrative.
 
 ## Constraints
-- **Timeline**: MVP in 4 weeks, production version in 8 weeks.
-- **Budget**: No additional SaaS spend — must use existing Python stack + cloud notebooks.
-- **Technical**: Data must remain within the company's AWS VPC (ap-southeast-1). Models must be explainable (no black-box-only outputs).
+- **Timeline**: MVP now; iterate after first successful run.
+- **Budget**: Reuse existing project stack and local data files.
+- **Technical**: Prefer simple, robust transforms and clear assumptions over complex modeling in v1.
 
 ## Stakeholders
 | Role | Name | Interest | Decision Authority |
 |------|------|----------|--------------------|
-| VP Commercial | Sarah Tan | Actionable SKU insights for quarterly reviews | Approver |
-| Regional Sales Director | Rizal Ahmad | Country-level SKU rankings, launch recommendations | Contributor |
-| Head of Data | Wei Lin | Technical architecture, data governance | Approver |
-| Brand Manager | Priya Menon | New-launch success drivers, packaging insights | Informed |
+| Business Lead | TBD | Usable launch projection output for decision support | Approver |
+| Technical Lead | TBD | Reliable and maintainable MVP pipeline | Approver |
+| Reviewer | TBD | Surface risks and weak assumptions | Contributor |
+| Output Engineer | TBD | Keep output easy to consume (chart + paragraph) | Contributor |

@@ -76,7 +76,8 @@ cp .env.example .env
 python run.py \
     --context inputs/sample/context.md \
     --data-sources inputs/sample/data_sources.md \
-    --quality balanced
+    --quality fast
+    # change --quality to balanced if needed
 ```
 
 ### 4. Run with your own project

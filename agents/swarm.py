@@ -412,8 +412,9 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
     # Phase A — Understand (one node per persona)
     # ------------------------------------------------------------------
     understand_nodes: list[str] = []
-    for persona in personas:
-        node_name = f"understand_{persona.config.persona_type}"
+    for idx, persona in enumerate(personas):
+        # Include the persona index so duplicate persona_type values do not collide.
+        node_name = f"understand_{persona.config.persona_type}_{idx}"
         graph.add_node(node_name, _make_understand_node(persona))
         understand_nodes.append(node_name)
 
@@ -427,8 +428,8 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
     # Review loop (each persona reviews others)
     # ------------------------------------------------------------------
     review_nodes: list[str] = []
-    for persona in personas:
-        node_name = f"review_{persona.config.persona_type}"
+    for idx, persona in enumerate(personas):
+        node_name = f"review_{persona.config.persona_type}_{idx}"
         graph.add_node(node_name, _make_review_node(persona, personas))
         review_nodes.append(node_name)
 
@@ -481,8 +482,8 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
 
     graph.add_node("build_start", build_start_fn)
 
-    for persona in personas:
-        node_name = f"build_{persona.config.persona_type}"
+    for idx, persona in enumerate(personas):
+        node_name = f"build_{persona.config.persona_type}_{idx}"
         graph.add_node(node_name, _make_build_node(persona))
         build_nodes.append(node_name)
 
@@ -502,8 +503,8 @@ def build_graph(personas: list[BasePersona], workflow_config: dict[str, Any]) ->
     graph.add_node("test_start", test_start_fn)
     graph.add_edge(build_nodes[-1], "test_start")
 
-    for persona in personas:
-        node_name = f"test_{persona.config.persona_type}"
+    for idx, persona in enumerate(personas):
+        node_name = f"test_{persona.config.persona_type}_{idx}"
         graph.add_node(node_name, _make_test_node(persona))
         test_nodes.append(node_name)
 
