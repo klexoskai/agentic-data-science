@@ -322,6 +322,7 @@ def run_pipeline(
                 port = _find_available_port(preferred_port)
                 env = os.environ.copy()
                 env["DASH_PORT"] = str(port)
+                env["DASH_DEBUG"] = "0"
                 console.print(f"[cyan]Launching Dash frontend on localhost:{port}...[/]")
                 subprocess.Popen([sys.executable, str(app_path)], cwd=_PROJECT_ROOT, env=env)
                 console.print(f"[green]Frontend started:[/] http://127.0.0.1:{port}")
