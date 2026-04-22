@@ -35,3 +35,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# ChromaDB on-disk store
+store/.chroma/

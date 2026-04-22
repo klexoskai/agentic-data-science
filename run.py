@@ -296,6 +296,14 @@ def run_pipeline(
         logger.warning("MVP artefact generation skipped: %s", exc)
         console.print(f"[yellow]MVP artefact generation skipped:[/] {exc}")
 
+    # Save run snapshot to ChromaDB agent memory
+    try:
+        from store.memory import save_run_snapshot
+        run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_run_snapshot(run_id=run_timestamp, final_state=final_state, config=config)
+    except Exception as exc:
+        logger.warning("Memory snapshot skipped: %s", exc)
+
     # Commit everything to git
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     git_init_and_commit(f"Pipeline run completed at {timestamp}")
