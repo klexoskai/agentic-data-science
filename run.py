@@ -715,11 +715,19 @@ if __name__ == "__main__":
             border_style="green",
         ))
 
+        # Auto-launch frontend if deliverable is a dashboard or hybrid
+        should_launch = spec.deliverable_type in ("dashboard", "hybrid")
+        if should_launch:
+            console.print(
+                "[cyan]Deliverable type is dashboard — "
+                "Dash app will launch automatically after build.[/]"
+            )
+
         run_pipeline(
             context_path=str(build_context_path),
             data_sources_path=str(build_datasources_path),
             quality=preset,
             samples_dir=str(_PROJECT_ROOT / "data"),
             config_path=args.config,
-            launch_frontend=False,
+            launch_frontend=should_launch,
         )
