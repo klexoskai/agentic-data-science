@@ -520,9 +520,11 @@ if __name__ == "__main__":
 
     elif args.mode == "strategy":
         from orchestration.strategy_council import run_strategy_council
+        from orchestration.deliverable_recommender import recommend_deliverable
+        from gates.strategy_gate import run_strategy_gate, StrategyVerdict
         from pathlib import Path as _Path
 
-        # Resolve problem statement
+        # ── Resolve problem statement ─────────────────────────────────────
         if args.problem and args.problem_text:
             console.print("[red]Use either --problem or --problem-text, not both.[/]")
             sys.exit(1)
@@ -534,7 +536,7 @@ if __name__ == "__main__":
             console.print("[red]Provide --problem <file> or --problem-text <text>.[/]")
             sys.exit(1)
 
-        # Resolve dataset descriptions from short names
+        # ── Resolve dataset descriptions ────────────────────────────────
         dataset_map = {
             "copa":           "copa.csv — historical P&L actuals (PRODUCT_ID, PERIOD, COUNTRY_CODE, SALES_QUANTITY, REVENUE_GOODS)",
             "pnl":            "pnl2425_volume_extracts_matched.csv — FY24-25 P&L and volume forecasts (matched_SKU_ID, Market, forecast_volume_y1, forecast_net_sales_y1)",
@@ -551,51 +553,141 @@ if __name__ == "__main__":
             for d in args.datasets
         ]
 
-        # Load config for preset
+        # ── Load config ────────────────────────────────────────────────
         config = load_config(_Path(args.config), quality_override=args.quality)
         preset = config.get("active_preset", "balanced")
-
-        # Output path
         run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = _Path(args.output) if args.output else \
-            _Path(f"outputs/strategy/{run_ts}_strategy.md")
 
-        console.print()
-        console.print(
-            Panel(
-                f"[bold blue]Strategy Council[/]\n"
-                f"Datasets: {', '.join(args.datasets)}\n"
-                f"Quality preset: {preset}\n"
-                f"Web search: {'disabled' if args.no_web_search else 'enabled'}\n"
-                f"Output: {output_path}",
-                border_style="blue",
-            )
-        )
-        console.print()
-
-        # Disable web search if requested
         if args.no_web_search:
             import os as _os
-            _os.environ["TAVILY_API_KEY"] = ""  # tools will skip gracefully
+            _os.environ["TAVILY_API_KEY"] = ""
 
-        result = run_strategy_council(
-            problem_statement=problem_statement,
-            dataset_descriptions=dataset_descriptions,
-            quality_preset=preset,
-            run_id=run_ts,
-            output_path=output_path,
-        )
+        # ── Strategy Council loop (re-runs on REVISE verdict) ──────────────
+        extra_feedback: str = ""
+        max_revisions = 3
 
-        console.print(
-            Panel(
-                f"[bold green]Strategy Council complete![/]\n\n"
-                f"Output written to: [bold]{output_path}[/]\n"
-                f"Critique rounds: {len(result['critiques'])}\n"
-                f"Agent proposals: {len(result['proposals'])}\n"
-                f"Context chunks used: {len(result['retrieved_chunks'])}",
-                title="Summary",
-                border_style="green",
+        for revision in range(max_revisions + 1):
+
+            output_path = _Path(args.output) if args.output else \
+                _Path(f"outputs/strategy/{run_ts}_r{revision}_strategy.md")
+
+            console.print()
+            console.print(
+                Panel(
+                    f"[bold blue]Strategy Council[/] "
+                    f"{'(revision ' + str(revision) + ')' if revision else ''}\n"
+                    f"Datasets : {', '.join(args.datasets)}\n"
+                    f"Preset   : {preset}\n"
+                    f"Web      : {'off' if args.no_web_search else 'on'}\n"
+                    f"Output   : {output_path}",
+                    border_style="blue",
+                )
             )
+
+            # Inject revision feedback into problem statement if present
+            effective_problem = problem_statement
+            if extra_feedback:
+                effective_problem = (
+                    problem_statement
+                    + f"\n\n## Revision Feedback (incorporate this)\n{extra_feedback}"
+                )
+
+            result = run_strategy_council(
+                problem_statement=effective_problem,
+                dataset_descriptions=dataset_descriptions,
+                quality_preset=preset,
+                run_id=f"{run_ts}_r{revision}",
+                output_path=output_path,
+            )
+
+            strategy_doc = result["final_strategy"]
+
+            console.print(Panel(
+                f"[bold green]Strategy Council complete![/]\n"
+                f"Output : [bold]{output_path}[/]\n"
+                f"Critique rounds : {len(result['critiques'])}\n"
+                f"Proposals       : {len(result['proposals'])}\n"
+                f"Context chunks  : {len(result['retrieved_chunks'])}",
+                title="Summary", border_style="green",
+            ))
+
+            # ── Deliverable Recommender ─────────────────────────────────
+            console.rule("[bold cyan]Deliverable Recommender[/]", style="cyan")
+            console.print("[dim]Analysing strategy to recommend end product...[/]")
+
+            spec = recommend_deliverable(
+                strategy_doc=strategy_doc,
+                data_dir=_PROJECT_ROOT / "data",
+            )
+            spec_md = spec.to_markdown()
+
+            # Save spec alongside strategy doc
+            spec_path = output_path.with_suffix(".deliverable.md")
+            spec_path.write_text(spec_md, encoding="utf-8")
+            console.print(f"[dim]Deliverable spec saved: {spec_path}[/]")
+
+            # ── Gate 0 — Strategy Approval ─────────────────────────────
+            verdict, extra_feedback = run_strategy_gate(
+                strategy_doc=strategy_doc,
+                strategy_path=output_path,
+                deliverable_spec_md=spec_md,
+                deliverable_spec=spec,
+            )
+
+            if verdict == StrategyVerdict.APPROVE:
+                break
+            elif verdict == StrategyVerdict.REVISE:
+                if revision >= max_revisions:
+                    console.print(
+                        f"[yellow]Max revisions ({max_revisions}) reached — "
+                        "proceeding with last strategy.[/]"
+                    )
+                    verdict = StrategyVerdict.APPROVE
+                    break
+                console.print(
+                    f"[yellow]Revision {revision + 1}/{max_revisions} — "
+                    "re-running Strategy Council with your feedback...[/]"
+                )
+                continue
+            elif verdict == StrategyVerdict.SKIP_BUILD:
+                console.print("[dim]Build skipped. Strategy doc saved.[/]")
+                sys.exit(0)
+            elif verdict == StrategyVerdict.QUIT:
+                sys.exit(0)
+
+        # ── Approved: hand off to pipeline build ─────────────────────────
+        console.rule("[bold green]Proceeding to Build Phase[/]", style="green")
+
+        # Write auto-generated context.md for the build agents
+        build_context_path = _PROJECT_ROOT / f"inputs/strategy/{run_ts}_build_context.md"
+        build_context_path.parent.mkdir(parents=True, exist_ok=True)
+        build_context_path.write_text(spec.to_context_md(), encoding="utf-8")
+        console.print(f"[dim]Build context written: {build_context_path}[/]")
+
+        # Write auto-generated data_sources.md referencing the chosen datasets
+        build_datasources_path = _PROJECT_ROOT / f"inputs/strategy/{run_ts}_data_sources.md"
+        ds_lines = ["# Data Sources (auto-generated from strategy)", ""]
+        for ds in spec.input_datasets:
+            ds_lines.append(f"## {ds}")
+            ds_lines.append(f"- **Location**: `data/{ds}`")
+            ds_lines.append(f"- **Format**: {ds.split('.')[-1].upper()}")
+            ds_lines.append("")
+        build_datasources_path.write_text("\n".join(ds_lines), encoding="utf-8")
+
+        console.print(Panel(
+            f"Handing off to [bold]pipeline[/] build mode\n"
+            f"Context  : {build_context_path}\n"
+            f"Datasets : {build_datasources_path}\n"
+            f"Quality  : {preset}",
+            title="[bold green]Build Handoff",
+            border_style="green",
+        ))
+
+        run_pipeline(
+            context_path=str(build_context_path),
+            data_sources_path=str(build_datasources_path),
+            quality=preset,
+            samples_dir=str(_PROJECT_ROOT / "data"),
+            config_path=args.config,
+            launch_frontend=False,
         )
-        console.print(f"\n[dim]Preview (first 600 chars):[/]")
-        console.print(result["final_strategy"][:600])
