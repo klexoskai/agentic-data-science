@@ -500,6 +500,11 @@ if __name__ == "__main__":
     # Change to project root so relative paths work
     os.chdir(_PROJECT_ROOT)
 
+    # Load environment variables for all modes (pipeline + strategy).
+    # This ensures OPENAI_API_KEY and other secrets from .env are available
+    # before any model clients are initialised.
+    load_dotenv(dotenv_path=_PROJECT_ROOT / ".env")
+
     # ── Route to the correct mode ────────────────────────────────────────
 
     if args.mode == "pipeline":
