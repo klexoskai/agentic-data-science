@@ -94,6 +94,38 @@ class DeliverableSpec:
             for p in self.phased_build_plan
         )
 
+        is_frontend = self.deliverable_type in ("dashboard", "hybrid")
+
+        frontend_contract = ""
+        if is_frontend:
+            frontend_contract = """
+## Frontend Contract (MANDATORY — do not deviate)
+The primary deliverable is a **runnable Plotly Dash application**.
+These rules are hard requirements, not suggestions:
+
+1. **Entry point**: the app MUST be saved as `pipeline/app.py`.
+2. **Launch**: the file must end with `if __name__ == "__main__": app.run(debug=False)`
+   so it starts with `python pipeline/app.py`.
+3. **User inputs**: the app MUST include at least one interactive input component
+   (e.g. `dcc.Dropdown`, `dcc.Input`, `dcc.DatePickerRange`, `dcc.Slider`) that
+   controls the analysis or chart output.
+4. **Submit / callback**: a button or reactive callback must re-run the underlying
+   logic (data load, transform, model/query) and refresh the chart on every change.
+   Do NOT pre-compute a static result at startup and display it unchanged.
+5. **Charts**: use `plotly.express` or `plotly.graph_objects` rendered inside
+   `dcc.Graph` components — NOT static PNG/HTML exports.
+6. **No static HTML export**: do not call `fig.write_html()` as the primary output.
+   The Dash app IS the deliverable. A CSV export in `outputs/` is fine as a side effect.
+7. **Self-contained**: all data loading happens inside the app or its callbacks.
+   The app must be runnable with `python pipeline/app.py` from the project root
+   with no additional setup beyond `pip install -r requirements.txt`.
+8. **Layout**: use `dash_bootstrap_components` or plain Dash HTML components.
+   Include a title, an input panel, and a results/chart panel.
+
+Fallback: if Dash app generation fails, still produce a CSV in outputs/ and a
+markdown summary — but the Dash app is the primary success criterion.
+"""
+
         return f"""# Build Context — {self.title}
 
 ## Business Overview
@@ -109,17 +141,16 @@ Build {self.title} for {self.target_user}.
 ## Success Criteria
 {chr(10).join(f'- Criterion {i+1}: {f}' for i, f in enumerate(self.key_features))}
 
-## Tech Stack and Fallback
+## Tech Stack
 Preferred stack: {', '.join(self.tech_stack)}.
-Fallback behavior: generate CSV outputs and markdown report in outputs/ if primary deliverable fails.
-
+{frontend_contract}
 ## Build Plan
 {plan_text}
 
 ## Constraints
 - Use only the datasets listed below. Do not invent additional data sources.
 - Complexity: {self.estimated_complexity}
-- All outputs go to outputs/ and pipeline/ directories.
+- All code outputs go to `pipeline/`, all data outputs go to `outputs/`.
 
 ## Caveats
 {chr(10).join(f'- {c}' for c in self.caveats) or '- None specified.'}
