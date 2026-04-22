@@ -94,3 +94,40 @@ persona_factory:
     - data_scientist
     - sales_director
     - qa_engineer
+
+# ---------------------------------------------------------------------------
+# Strategy Council Settings  (used by: python run.py strategy ...)
+# ---------------------------------------------------------------------------
+strategy_council:
+  # Model mapping per quality preset
+  # Each preset controls the council agent + critic models
+  presets:
+    fast:
+      description: "Quick strategy draft — mini models, 1 web search pass"
+      council_model: gpt-4o-mini
+      critic_model: gpt-4o-mini
+      synthesiser_model: gpt-4o-mini
+      web_search_enabled: true
+      web_search_depth: basic          # basic | advanced
+      chroma_n_results: 5
+
+    balanced:
+      description: "Default — strong models, web search, 2 critic rounds"
+      council_model: gpt-4o
+      critic_model: gpt-4o
+      synthesiser_model: gpt-4o
+      web_search_enabled: true
+      web_search_depth: advanced
+      chroma_n_results: 8
+
+    maximum:
+      description: "Highest quality — frontier models, deep web search"
+      council_model: gpt-4o
+      critic_model: gpt-4o
+      synthesiser_model: gpt-4o
+      web_search_enabled: true
+      web_search_depth: advanced
+      chroma_n_results: 12
+
+  # Output
+  output_dir: outputs/strategy

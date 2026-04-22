@@ -347,54 +347,133 @@ def run_pipeline(
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
+    """Parse command-line arguments with subcommands."""
     parser = argparse.ArgumentParser(
         description="Agentic Data Science Pipeline — Multi-agent collaboration system",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Examples:\n"
-            "  python run.py --context inputs/sample/context.md "
+            "Modes:\n"
+            "  pipeline   Run the full build pipeline (understand → build → test → ship)\n"
+            "  strategy   Run the Strategy Council (enrich → debate → critique → synthesise)\n"
+            "\nExamples:\n"
+            "  python run.py pipeline --context inputs/sample/context.md "
             "--data-sources inputs/sample/data_sources.md\n"
-            "  python run.py --context my_project/context.md "
-            "--data-sources my_project/data.md --quality maximum\n"
+            "  python run.py pipeline --context inputs/sample/context.md "
+            "--data-sources inputs/sample/data_sources.md --quality maximum\n"
+            "  python run.py strategy --problem inputs/sample/context.md "
+            "--datasets copa pnl launch_tracker\n"
+            "  python run.py strategy --problem inputs/sample/context.md "
+            "--datasets copa pnl --quality balanced --verbose\n"
         ),
     )
-    parser.add_argument(
-        "--context",
-        required=True,
-        help="Path to the business context markdown file.",
-    )
-    parser.add_argument(
-        "--data-sources",
-        required=True,
-        help="Path to the data sources documentation markdown file.",
-    )
-    parser.add_argument(
+
+    # ── Shared flags (available to all subcommands) ──────────────────────
+    shared = argparse.ArgumentParser(add_help=False)
+    shared.add_argument(
         "--quality",
         choices=["fast", "balanced", "maximum"],
         default=None,
         help="Quality preset (overrides config.yaml). Default: balanced.",
     )
-    parser.add_argument(
-        "--samples-dir",
-        default=None,
-        help="Optional directory containing sample data files for profiling.",
-    )
-    parser.add_argument(
+    shared.add_argument(
         "--config",
         default="config.yaml",
         help="Path to the configuration YAML file. Default: config.yaml.",
     )
-    parser.add_argument(
+    shared.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose (DEBUG) logging.",
     )
-    parser.add_argument(
+
+    subparsers = parser.add_subparsers(dest="mode", metavar="MODE")
+    subparsers.required = True
+
+    # ── pipeline subcommand (existing behaviour, unchanged) ──────────────
+    sp_pipeline = subparsers.add_parser(
+        "pipeline",
+        parents=[shared],
+        help="Run the full multi-agent build pipeline.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sp_pipeline.add_argument(
+        "--context",
+        required=True,
+        help="Path to the business context markdown file.",
+    )
+    sp_pipeline.add_argument(
+        "--data-sources",
+        required=True,
+        help="Path to the data sources documentation markdown file.",
+    )
+    sp_pipeline.add_argument(
+        "--samples-dir",
+        default=None,
+        help="Optional directory containing sample data files for profiling.",
+    )
+    sp_pipeline.add_argument(
         "--launch-frontend",
         action="store_true",
         help="Launch Dash frontend on localhost after successful completion.",
     )
+
+    # ── strategy subcommand (new: Strategy Council) ───────────────────────
+    sp_strategy = subparsers.add_parser(
+        "strategy",
+        parents=[shared],
+        help="Run the Strategy Council: 3 agents + 2 critic rounds + web search.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  # Reference specific datasets by name (matches filenames in data/)\n"
+            "  python run.py strategy --problem inputs/sample/context.md "
+            "--datasets copa pnl launch_tracker\n"
+            "\n"
+            "  # Pass a problem statement inline instead of a file\n"
+            "  python run.py strategy "
+            "--problem-text \"Forecast 12-month SKU sales for SEA markets\" "
+            "--datasets copa tm1 pnl\n"
+        ),
+    )
+    sp_strategy.add_argument(
+        "--problem",
+        default=None,
+        metavar="FILE",
+        help="Path to a markdown file describing the business problem "
+             "(e.g. inputs/sample/context.md). Mutually exclusive with --problem-text.",
+    )
+    sp_strategy.add_argument(
+        "--problem-text",
+        default=None,
+        metavar="TEXT",
+        help="Inline business problem statement string. "
+             "Mutually exclusive with --problem.",
+    )
+    sp_strategy.add_argument(
+        "--datasets",
+        nargs="+",
+        required=True,
+        metavar="DATASET",
+        help=(
+            "One or more dataset names to reference. Use short names that "
+            "match filenames in data/ (e.g. copa pnl launch_tracker tm1 iqvia). "
+            "The council will look up their full descriptions from ChromaDB "
+            "and data_sources.md automatically."
+        ),
+    )
+    sp_strategy.add_argument(
+        "--output",
+        default=None,
+        metavar="FILE",
+        help="Optional path to write the final strategy markdown. "
+             "Default: outputs/strategy/<run_id>_strategy.md",
+    )
+    sp_strategy.add_argument(
+        "--no-web-search",
+        action="store_true",
+        help="Disable web search (useful if TAVILY_API_KEY is not set).",
+    )
+
     return parser.parse_args()
 
 
@@ -421,11 +500,97 @@ if __name__ == "__main__":
     # Change to project root so relative paths work
     os.chdir(_PROJECT_ROOT)
 
-    run_pipeline(
-        context_path=args.context,
-        data_sources_path=args.data_sources,
-        quality=args.quality,
-        samples_dir=args.samples_dir,
-        config_path=args.config,
-        launch_frontend=args.launch_frontend,
-    )
+    # ── Route to the correct mode ────────────────────────────────────────
+
+    if args.mode == "pipeline":
+        # Existing pipeline behaviour — unchanged
+        run_pipeline(
+            context_path=args.context,
+            data_sources_path=args.data_sources,
+            quality=args.quality,
+            samples_dir=args.samples_dir,
+            config_path=args.config,
+            launch_frontend=args.launch_frontend,
+        )
+
+    elif args.mode == "strategy":
+        from orchestration.strategy_council import run_strategy_council
+        from pathlib import Path as _Path
+
+        # Resolve problem statement
+        if args.problem and args.problem_text:
+            console.print("[red]Use either --problem or --problem-text, not both.[/]")
+            sys.exit(1)
+        if args.problem:
+            problem_statement = _Path(args.problem).read_text(encoding="utf-8")
+        elif args.problem_text:
+            problem_statement = args.problem_text
+        else:
+            console.print("[red]Provide --problem <file> or --problem-text <text>.[/]")
+            sys.exit(1)
+
+        # Resolve dataset descriptions from short names
+        dataset_map = {
+            "copa":           "copa.csv — historical P&L actuals (PRODUCT_ID, PERIOD, COUNTRY_CODE, SALES_QUANTITY, REVENUE_GOODS)",
+            "pnl":            "pnl2425_volume_extracts_matched.csv — FY24-25 P&L and volume forecasts (matched_SKU_ID, Market, forecast_volume_y1, forecast_net_sales_y1)",
+            "launch_tracker": "launch_tracker25_matched.csv — SKU launch history (SKU Code, SKU Launch Month, Category, Market Specific, Brand)",
+            "tm1":            "tm1_qty_sales_pivot.csv — monthly actual quantity and net sales (sku_id, period, quantity, net_sales)",
+            "iqvia":          "IQVIA_Asia_data1.csv — third-party Asia market size data",
+            "euromonitor":    "euro_mon_hier1_RSP_USD_histconst2024_histfixedER20242.csv — Euromonitor retail selling price data",
+            "nicholas_hall":  "Nicholas_Hall.csv — OTC market intelligence data",
+            "who_flu":        "WHO_FLU.csv — WHO flu surveillance data",
+            "forecast":       "data/raw/forecast.csv — raw forecast extracts",
+        }
+        dataset_descriptions = [
+            dataset_map.get(d.lower().replace("-", "_"), d)
+            for d in args.datasets
+        ]
+
+        # Load config for preset
+        config = load_config(_Path(args.config), quality_override=args.quality)
+        preset = config.get("active_preset", "balanced")
+
+        # Output path
+        run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = _Path(args.output) if args.output else \
+            _Path(f"outputs/strategy/{run_ts}_strategy.md")
+
+        console.print()
+        console.print(
+            Panel(
+                f"[bold blue]Strategy Council[/]\n"
+                f"Datasets: {', '.join(args.datasets)}\n"
+                f"Quality preset: {preset}\n"
+                f"Web search: {'disabled' if args.no_web_search else 'enabled'}\n"
+                f"Output: {output_path}",
+                border_style="blue",
+            )
+        )
+        console.print()
+
+        # Disable web search if requested
+        if args.no_web_search:
+            import os as _os
+            _os.environ["TAVILY_API_KEY"] = ""  # tools will skip gracefully
+
+        result = run_strategy_council(
+            problem_statement=problem_statement,
+            dataset_descriptions=dataset_descriptions,
+            quality_preset=preset,
+            run_id=run_ts,
+            output_path=output_path,
+        )
+
+        console.print(
+            Panel(
+                f"[bold green]Strategy Council complete![/]\n\n"
+                f"Output written to: [bold]{output_path}[/]\n"
+                f"Critique rounds: {len(result['critiques'])}\n"
+                f"Agent proposals: {len(result['proposals'])}\n"
+                f"Context chunks used: {len(result['retrieved_chunks'])}",
+                title="Summary",
+                border_style="green",
+            )
+        )
+        console.print(f"\n[dim]Preview (first 600 chars):[/]")
+        console.print(result["final_strategy"][:600])
