@@ -143,7 +143,7 @@ to implement — choosing from:
   - hybrid      : Combination of two of the above (e.g. pipeline + dashboard)
 
 You must respond with a single JSON object matching EXACTLY this schema:
-{
+{{
   "deliverable_type": "dashboard|pipeline|report|api|notebook|hybrid",
   "title": "short descriptive name",
   "rationale": "2-3 sentence justification",
@@ -152,15 +152,15 @@ You must respond with a single JSON object matching EXACTLY this schema:
   "input_datasets": ["exact filenames from data/ dir that exist"],
   "key_features": ["concrete feature 1", "concrete feature 2", ...],
   "phased_build_plan": [
-    {
+    {{
       "phase": "Phase 1: Data Preparation",
       "tasks": ["task 1", "task 2"],
       "files": ["outputs/file.py"]
-    }
+    }}
   ],
   "estimated_complexity": "low|medium|high",
   "caveats": ["caveat 1", "caveat 2"]
-}
+}}
 
 Rules:
 - input_datasets must only contain files that actually exist in the project data/ directory.
