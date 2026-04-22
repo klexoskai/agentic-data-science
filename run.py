@@ -659,10 +659,42 @@ if __name__ == "__main__":
         console.rule("[bold green]Proceeding to Build Phase[/]", style="green")
 
         # Write auto-generated context.md for the build agents
+        # Includes: deliverable spec (structured) + full strategy doc (all agent
+        # proposals, debate, critiques, caveats) so build agents have complete
+        # awareness of the strategy council's reasoning.
         build_context_path = _PROJECT_ROOT / f"inputs/strategy/{run_ts}_build_context.md"
         build_context_path.parent.mkdir(parents=True, exist_ok=True)
-        build_context_path.write_text(spec.to_context_md(), encoding="utf-8")
+        full_build_context = (
+            spec.to_context_md()
+            + "\n\n---\n\n"
+            + "# Full Strategy Council Output\n\n"
+            + "_The following is the complete strategy document produced by the "
+            + "multi-agent council (proposals, debate, critiques, final synthesis). "
+            + "Use this as your primary reference for all design decisions._\n\n"
+            + strategy_doc
+        )
+        build_context_path.write_text(full_build_context, encoding="utf-8")
         console.print(f"[dim]Build context written: {build_context_path}[/]")
+
+        # Also ingest the strategy doc into ChromaDB so the AIQ research graph
+        # can retrieve it during the build enrichment pass.
+        try:
+            from store.client import get_collection
+            from store.config import COLLECTION_CONTEXT_DOCS
+            from store.ingest import _doc_id, _split_markdown_by_heading
+            col = get_collection(COLLECTION_CONTEXT_DOCS)
+            strategy_rel = str(output_path.relative_to(_PROJECT_ROOT))
+            chunks = _split_markdown_by_heading(strategy_doc, source=strategy_rel)
+            for chunk in chunks:
+                col.upsert(
+                    ids=[_doc_id(strategy_rel, chunk["heading"], str(chunk["chunk_index"]))],
+                    documents=[chunk["text"]],
+                    metadatas=[{"source": strategy_rel, "heading": chunk["heading"],
+                                "chunk_index": chunk["chunk_index"], "type": "strategy"}],
+                )
+            console.print(f"[dim]Strategy doc ingested into ChromaDB ({len(chunks)} chunks)[/]")
+        except Exception as exc:
+            logger.warning("ChromaDB strategy ingest skipped: %s", exc)
 
         # Write auto-generated data_sources.md referencing the chosen datasets
         build_datasources_path = _PROJECT_ROOT / f"inputs/strategy/{run_ts}_data_sources.md"
